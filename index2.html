@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.css" />
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+  <script src="http://dimplejs.org/dist/dimple.v2.0.0.min.js"></script>
+  <script src="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.js"></script>
+    <style>
+		#box {
+    		height: 600px;
+    		width: 1100px;
+    	}
+    	#box-header {
+    		height: 200px;
+    		width: 1100px;
+    	}
+    	#box-content {
+    		height: 520px;
+    		width: 1100px;
+    	}
+		#box-map, #box-plot { 
+    		height: 520px; 
+    		width: 600px;
+    	}
+		#box-map-header, #box-plot-header, #box-reference { 
+    		height: 60px; 
+    		width: 500px;
+    	}
+      	circle.dimple-bubble {
+        	fill: red;
+			opacity: 0.8;
+      	}
+      
+      	.dimple-line {
+      		stroke: orange;
+      	}
+
+      	h2, .title, .subtitle, .info {
+        	text-align: left;
+        	margin: 5px
+      	}
+      	
+      	.ref-text {
+      		width: 590px;
+      	}
+      	
+      	div.weekday-button, div.timeofday-button,div.layer-button, div.next-button {
+        	top: 5px;
+        	left: 50px;
+      	}
+      	div.weekday-button div, div.timeofday-button div, div.layer-button div, div.next-button div {
+        	background-color: #c6dbef;
+        	padding: 3px;
+        	border: 1px solid white;
+        	display:table-cell;
+        	color: white;
+      	}
+
+    </style>
+    <script type="text/javascript">  
+
+    function draw(data) {
+
+    	"use strict";
+
+//		Lists for days and times
+		var day_list = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "All"];
+		var time_list = ['Morning', 'Midday', 'Afternoon', 'Evening', 'Night', 'All'];
+		var layer_list = ["Pickup", "Dropoff"];
+		var current_day = "All";
+		var current_time = "All";
+		var current_layer = "Pickup";
+		
+		var story_list = [{day:"All", 		time:"All", 	layer:"Pickup"},
+						  {day:"Monday", 	time:"All", 	layer:"Pickup"},
+						  {day:"Saturday", 	time:"All", 	layer:"Dropoff"},
+						  {day:"Sunday", 	time:"Evening", layer:"Dropoff"},
+						  {day:"Sunday", 	time:"Night", 	layer:"Dropoff"}
+						  ]; 
+		var story_text = ["We start with an "+
+							"overview of the data. You can see the average passenger count for each time of day below "+
+							"and the corresponding pickup destinations on the map. The size of the bubble represents the "+
+							"relative amount of pickups in the area around the bubble. We start with looking at Mondays "+
+							"when pressing move-on below.",
+						  "If we select just Mondays, the passenger counts are high in the morning and the evening. " +
+						  	"Next, we compare this with Saturdays. Press move-on below.",
+						  "On Saturdays the taxi usage is rising throughout the day. The later the more taxis are used. "+
+						  	"Let's see what happens on Sundays. Press move-on below.",	
+						  "On Sundays the highest passenger count is still during the night. Public transportation is closed " +
+						  	"or it is simply more secure to take a taxi. Looking at the map we now see the taxi dropoffs " +
+						  	"in the evening. Let us compare this with the night and look at the districts east of Manhattan. " +
+							"Press move-on below.",
+						  "During the night the taxi dropoffs in the eastern parts are even higher than in the evening. " +
+						  	"This concludes the taxi analytics story. The next page will bring you into explore mode "+
+						  	"where you can choose yourself. Press move-on below.",
+						  "You now can explore the taxi data yourself by selecting the buttons below or zoom into the map."
+						 ];
+
+//		write header Text
+        d3.select(".title")
+            .text("NYC Taxi data");
+
+//debugger;
+// == map ====================================================================
+
+//		create map for taxi movement
+		var map = L.map('box-map').setView([40.75,-73.9], 11);
+
+//		add layer with simple map		
+		L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', 
+			{
+    			attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://mapbox.com">Mapbox</a>',
+    			maxZoom: 18,
+    			id: 'wiljoh.oad1fm6l',
+    			accessToken: 'pk.eyJ1Ijoid2lsam9oIiwiYSI6ImNpaG5iMDhxeTAwaHV1Mm00NTZ6M2oyNW4ifQ.gENiemVwlwZjJzhSWmJfTQ'
+			}).addTo(map);
+
+		var ll_list = [];				// list of all layer objects
+
+//		print points that represent the number of taxi rides at that geo-raster
+		function draw_raster_points (datapoints) {
+
+			var nested;
+
+			if (current_layer == "Pickup") {
+//				count taxi rides at pickup point
+				nested = d3.nest()
+					.key(function(d) { var p = +d.latp; return p.toFixed(2); })
+					.key(function(d) { var p = +d.lonp; return p.toFixed(2); })
+					.rollup(function(d) { return d3.sum(d, function(g) { return 1; }); })
+					.entries(datapoints);
+			}
+			else {
+//				count taxi rides at dropoff point
+				nested = d3.nest()
+					.key(function(d) { var p = +d.latd; return p.toFixed(2); })
+					.key(function(d) { var p = +d.lond; return p.toFixed(2); })
+					.rollup(function(d) { return d3.sum(d, function(g) { return 1; }); })
+					.entries(datapoints);
+			}
+
+//			find max number of taxi rides over all rasters to normalize radius
+            var cnt_max = d3.max(nested, function(d) {
+                return d3.max(d.values, function(g) { return g.values; });
+            });
+            var radius = d3.scale.sqrt()
+                           .domain([0, cnt_max])
+                           .range([0, 500]);
+
+//			over all found rasters print a circle
+			var latp, lonp, cnt;
+			for (var i=0; i<nested.length; i++) {
+			
+				latp = nested[i].key
+				
+				for (var j=0; j<nested[i].values.length; j++) {
+				
+					lonp = nested[i].values[j].key;
+					cnt = nested[i].values[j].values;
+
+					var circle = new L.circle([latp+.005,lonp+.005], radius(cnt), 
+					{
+						color: '#6baed6',
+						opacity: 0.5
+					}).addTo(map);
+
+					ll_list.push(circle);
+				}
+			}
+
+		} // of function rasterize ()
+
+// 		filter invalid geos
+        var filtered_geo = data.filter(function(d) {
+              return (d.latp != 0 && d.latp != d.latd);
+		});
+
+//		draw_raster_points (filtered_geo);
+
+// == dimple chart ====================================================================
+
+        var margin = 0,
+        	width = 600 - margin,
+            height = 500 - margin;
+
+// 		create SVG for plots
+        var svg = d3.select("#box-plot")
+			.append("svg")
+            .attr("width", width + margin)
+            .attr("height", height + margin)
+            .append('g')
+            .attr('class','chart');
+
+//		function to aggregate passenger count
+		function agg_daytime(leaves) {
+   	    	var total = d3.sum(leaves, function(d) {
+       	    	return d['passenger_count'];
+       		});
+
+            return {
+   	              'passenger_count' : total,
+       	    };
+        } // of agg_daytime()
+
+//		nested for all values
+   	    var nested = d3.nest()
+       		.key(function(d) { return d['daytime']; })
+       		.key(function(d) { return d['day']; })
+   	        .rollup(agg_daytime)
+       	    .entries(data);
+
+		var i,j;
+		var data_filtered = [];
+		for (i=0; i<nested.length; i++) {
+			var v = nested[i].values;
+			for (j=0; j<v.length; j++) {
+				data_filtered.push({daytime:nested[i].key, day:v[j].key, passenger_count:v[j].values.passenger_count});
+			}
+		}
+//debugger;
+//		create dimple object for chart
+		var myChart = new dimple.chart(svg, data_filtered);
+
+        myChart.defaultColors = [
+/*          new dimple.color("#f7fbff"),
+        	new dimple.color("#deebf7"),*/
+          	new dimple.color("#c6dbef"),
+          	new dimple.color("#9ecae1"),
+          	new dimple.color("#6baed6"),
+          	new dimple.color("#4292c6"),
+          	new dimple.color("#2171b5")/*,
+          	new dimple.color("#08519c"),
+          	new dimple.color("#08306b")*/
+		]; 
+
+//		x axis is daytime
+        var xAxis = myChart.addCategoryAxis("x", "daytime");
+        xAxis.title = "Taxi data for all days";
+      	xAxis.addOrderRule(['Morning', 'Midday', 'Afternoon', 'Evening', 'Night']);
+
+//		y axis is average passenger count
+        var yAxis = myChart.addMeasureAxis("y", "passenger_count");
+		yAxis.title = "Average passenger count per day";
+		yAxis.overrideMax = 320;
+
+//		add bars 
+		var myBar = myChart.addSeries(null, dimple.plot.bar);
+
+//		aggregate is avg
+		myBar.aggregate = dimple.aggregateMethod.avg
+
+//		draw chart
+//        myChart.draw(500);
+
+//		function to update chart for a given dayofweek
+        function update(dayofweek, timeofday) {
+
+//			filter day of week
+        	var filtered = data.filter(function(d) {
+                  return (d['weekday'] == dayofweek || dayofweek == "All");
+            });
+
+    	    var nested = d3.nest()
+        		.key(function(d) { return d['daytime']; })
+        		.key(function(d) { return d['day']; })
+    	        .rollup(agg_daytime)
+        	    .entries(filtered);
+
+			data_filtered = [];
+			var i,j;
+			for (i=0; i<nested.length; i++) {
+				var v = nested[i].values;
+				for (j=0; j<v.length; j++) {
+					data_filtered.push({daytime:nested[i].key, day:v[j].key, passenger_count:v[j].values.passenger_count});
+				}
+			}
+
+			myChart.data = data_filtered;
+	        xAxis.title = "Taxi data for "+dayofweek;
+
+			myChart.draw(500);
+
+//			Remove all layers from map
+			for (i=0; i<ll_list.length; i++) {
+				map.removeLayer(ll_list[i]);
+			}
+			ll_list = [];
+
+// 			filter timeofday and invalid geos
+        	var filtered_geo = data.filter(function(d) {
+                  return ((d.latp != 0 && d.latp != d.latd) && 
+                  		  (d['weekday'] == dayofweek || dayofweek == "All") &&
+                  		  (d['daytime'] == timeofday || timeofday == "All"));
+            });
+
+			draw_raster_points (filtered_geo);
+
+        } // of update()
+
+		var buttons_w, buttons_t, buttons_l;
+		function create_buttons () {
+		
+//			add buttons for weekdays
+			buttons_w = d3.select("#box-plot-header")
+				.append("div")
+				.attr("class", "weekday-button")
+				.selectAll("div")
+				.data(day_list)
+				.enter()
+				.append("div")
+				.attr("class", function(d) { return "weekday-button-"+d; })
+				.text(function(d) { return d; })
+				.style("background", '#c6dbef')
+				.style("color", "white");
+
+//			add buttons for timeofday
+			buttons_t = d3.select("#box-map-header")
+				.append("div")
+				.attr("class", "timeofday-button")
+				.selectAll("div")
+				.data(time_list)
+				.enter()
+				.append("div")
+				.attr("class", function(d) { return "timeofday-button-"+d; })
+				.text(function(d) { return d; })
+				.style("background", '#c6dbef')
+				.style("color", "white");
+
+//			add buttons for layer
+			buttons_l = d3.select("#box-map-header")
+				.append("div")
+				.attr("class", "layer-button")
+				.selectAll("div")
+				.data(layer_list)
+				.enter()
+				.append("div")
+				.attr("class", function(d) { return "layer-button-"+d; })
+				.text(function(d) { return d; })
+				.style("background", '#c6dbef')
+				.style("color", "white");
+
+//			add next button
+            d3.select(".next-button div")
+            	.style("cursor", "pointer")
+               	.on("mousedown", function(d) {
+                    d3.select(this)
+   	                  .transition()
+       	              .duration(100)
+           	          .style("background", "orange")
+               	      .style("color", "white");
+               	     })
+               	.on("click", function(d) {
+					story_idx++;
+					tell_story();
+               	     })
+               	.on("mouseup", function(d) {
+                    d3.select(this)
+   	                  .transition()
+       	              .duration(500)
+           	          .style("background", "#c6dbef")
+               	      .style("color", "white");
+               	     });
+
+		} // of function create_buttons()
+
+//		highlight current button
+		function highlight_buttons () {
+
+//			set all weekday buttons to default
+			d3.select(".weekday-button")
+				.selectAll("div")
+               	.transition()
+   	            .duration(500)
+       	        .style("background", '#c6dbef')
+           	    .style("color", "white");
+
+//			Highlight selected weekday
+			d3.select(".weekday-button-"+current_day)
+				.transition()
+				.duration(500)
+				.style("background", 'orange')
+				.style("color", "white");
+
+//			set all timeofday buttons to default
+			d3.select(".timeofday-button")
+				.selectAll("div")
+            	.transition()
+   	            .duration(500)
+       	        .style("background", '#c6dbef')
+           	    .style("color", "white");
+
+//			Highlight selected timeofday
+			d3.select(".timeofday-button-"+current_time)
+				.transition()
+				.duration(500)
+				.style("background", 'orange')
+				.style("color", "white");
+
+//			set all layer buttons to default
+			d3.select(".layer-button")
+				.selectAll("div")
+            	.transition()
+   	            .duration(500)
+       	        .style("background", '#c6dbef')
+           	    .style("color", "white");
+
+//			Highlight selected layer
+			d3.select(".layer-button-"+current_layer)
+				.transition()
+				.duration(500)
+				.style("background", 'orange')
+				.style("color", "white");
+
+		} // of function highlight_button()
+
+		function tell_story() {
+
+			if(story_idx < story_list.length) {
+
+		    	current_day  = story_list[story_idx].day;
+		    	current_time = story_list[story_idx].time;
+	    		current_layer = story_list[story_idx].layer;
+        	    update(current_day, current_time);
+        	    highlight_buttons()
+
+//				change subtitle text
+		    	d3.select(".info")
+        	    	.text(story_text[story_idx]);
+			}
+
+//			after last story, activate buttons
+			else {
+
+//				change subtitle text
+		    	d3.select(".info")
+        	    	.text(story_text[story_idx]);
+        	    	
+//				deactivate next button
+        	    d3.select(".next-button")
+        	    	.on()
+        	    	.text("");
+
+//				click event for weekday buttons
+                buttons_w.on("click", function(d) {
+
+					current_day = d;
+   					highlight_buttons ();
+                    update(d, current_time);
+				})
+				.style("cursor", "pointer");
+
+//				click event for timeofday buttons
+                buttons_t.on("click", function(d) {
+
+                    current_time = d;
+					highlight_buttons ();
+                    update(current_day, d);
+				})
+				.style("cursor", "pointer");
+
+//				click event for layer buttons
+                buttons_l.on("click", function(d) {
+
+					highlight_buttons ();
+                    current_layer = d;
+					highlight_buttons ();
+                    update(current_day, current_time);
+				})
+				.style("cursor", "pointer");	
+
+            } // if story_idx > length
+
+		} // of function tell_story()
+
+// 		create buttons
+		create_buttons();
+
+//		start with first story
+		var story_idx = 0;
+		tell_story();
+
+    }; // of draw()
+
+      </script>
+  </head>
+<body>
+
+	<div id="box" style="display:table;">
+		<div id="box-header" style="display:table-row">
+			<h2 class="title">NYC Taxi data (Loading ... please wait)</h2>
+			<p class="subtitle">Analyze NYC taxi data.</p>
+			<p class="info">Please wait while the needed data is loaded ...</p>
+			<div class="next-button"><div>move on</div></div>
+		</div>
+		<div id="box-buttons" style="display:table-row">
+			<div id="box-plot-header" style="display:table-cell"></div> 
+			<div id="box-map-header" style="display:table-cell"></div>
+		</div>
+		<div id="box-content" style="display:table-row">
+			<div id="box-plot" style="display:table-cell"></div> 
+			<div id="box-map" style="display:table-cell"></div> 
+		</div>
+		<div id="box-reference"style="display:table-row">
+			<div class="ref-text">
+				NYC taxi analysis is based on data found here: <a href="http://www.andresmh.com/nyctaxitrips/">http://www.andresmh.com/nyctaxitrips/</a>.
+				Only a small subset of the data is used for this visualization to demonstrate the concept.
+			</div>
+		</div>
+	</div>
+
+  <script type="text/javascript">
+
+// load csv with taxi data
+  d3.csv("data/taxi-av100000.csv", function(d) {
+  	 return {
+  		day:				d["pickup.date"],
+  		weekday: 			d["weekday"],
+  		passenger_count: 	d["passenger.count"],
+  		daytime:			((d.Hour < 6) ? "Night" : ((d.Hour < 11) ? "Morning" : ((d.Hour < 14) ? "Midday" : ((d.Hour < 18) ? "Afternoon" : ((d.Hour < 22) ? "Evening" : "Night"))))),
+  		latp:				d["pickup.latitude"],
+  		lonp:				d["pickup.longitude"],
+  		latd:				d["dropoff.latitude"],
+  		lond:				d["dropoff.longitude"]
+  		};
+  	}, draw);
+  </script>
+  
+</body>
+</html>
