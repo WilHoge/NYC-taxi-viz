@@ -1,22 +1,26 @@
 # Summary
 
-Taxi data from NYC is available for some time now (see http://chriswhong.com/open-data/foil_nyc_taxi/). The visualization I created allows the user to get aggregated information on the taxi trips and detailed insights into the origin/destination of the trips simultaneously.
+Taxi data from NYC is available for some time now (see http://chriswhong.com/open-data/foil_nyc_taxi/). The visualization I created allows the user to get aggregated information on the taxi trips and detailed insights into the origin/destination of the trips simultaneously. After a short overview into some findings in the data the reader or user can analyze the data in various ways.
 
 # Design
 
 The visualization has two components. On the left side there is a chart showing the results of data aggregation. On the right side there is a map showing trip origins/destinations. The user will have the possibility to filter the data for both of the visualization components.
 
-- index1.html is the first version of the visualization that has an automated story that goes through some findings I had in the data. When the story is finished the uses has the possibility to evaluate the data on his/her own.
+The components are designed in a way that they could be changed „in place“. This minimizes the need to build new components on the page. Also, the code is flexible and modular. It allows to easily change the story told independent of the visualization code itself. 
 
+- index1.html is the first version of the visualization that has an automated story that goes through some findings I had in the data. When the story is finished the uses has the possibility to evaluate the data on his/her own.
+Link: http://wilhoge.github.io/NYC-taxi-viz/index1.html
 
 - One point in the feedback for the first version was that the loading time is too long and that the data points on the map are not giving good indication of how the taxi rides distribute over the city. Therefore I decided to aggregate the data on geographical basis and normalize it to the number of rides at the current filter settings. This improves the load time significantly (it was slow due to the number of points to draw on the map) and gives a clearer indication how the taxi rides distribute. 
 I also changed the story from automatic to user driven. The story now leads through the data and shows some findings before the user can analyze on his/her own.
 I also changed the y-axis to a fixed value to make it easier to compare values between different filters.
 The second version that has these changes is index2.html.
+Link: http://wilhoge.github.io/NYC-taxi-viz/index2.html
 
 - The feedback for the second version shows that the visualization has indeed improved. What was mentioned though is that it would be great to see additional metrics also. So I extended the free analysis part of the visualization. It now gives features more values to analyze. Besides passenger count that was also available in the first and second version it now also offers, average trip, average fare, average speed and average fare per mile. 
 I also added more descriptive text to explain the filters, metrics and data.
 Although there are still ideas how to improve the visualization even further with additional metrics, more data and more filters this is the final version (index_final.html).
+Link: http://wilhoge.github.io/NYC-taxi-viz/index_final.html
 
 # Feedback
 
@@ -116,3 +120,5 @@ The subsets to choose from have 1.000, 10.000 and 100.000 taxi trips and are a s
 - taxi-av100000.csv
 
 The final version of the visualization is based on the largest data set.
+
+The documentation of dimplejs, d3, leaflet and also the Udacity forum about „Make effective data visualization“ was very helpful to complete this exercise.
